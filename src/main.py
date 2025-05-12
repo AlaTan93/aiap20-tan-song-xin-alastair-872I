@@ -1,8 +1,10 @@
-from hard_pipeline import process_hard_data
-from soft_pipeline import process_soft_data
-from xgboost_traintest import train_and_save as boost_train_save
+from pipeline import process_hard_data
 from decisionregressor_traintest import train_and_save as decision_train_save
-from decisionregressor_traintest2 import train_and_save_soft as decision_train_save_soft
+from decisionregressor_traintest import load_and_test as decision_load_test
+from xgboost_traintest import train_and_save as boost_train_save
+from xgboost_traintest import load_and_test as boost_load_test
+from deepmodel_traintest import train_and_save as deep_train_save
+from deepmodel_traintest import load_and_test as deep_load_test
 import numpy as np
 import pandas as pd
 import argparse
@@ -18,16 +20,22 @@ def main():
     elif not(args.train or args.eval):
         raise ValueError("Either --train or --eval must be set as an argument")
 
-    if (args.train):
-        X_soft_train, X_soft_val, y_soft_train, y_soft_val = process_soft_data("", True)
-        X_train, X_val, y_train, y_val = process_hard_data("", True)        
-        decision_train_save(X_soft_train, X_soft_val, y_soft_train, y_soft_val)
-        #decision_train_save(X_train, X_val, y_train, y_val)
-        
-        #boost_train_save(X_train, X_val, y_train, y_val)
+    if (args.train):        
+        X_train, X_val, y_train, y_val = process_hard_data("", True)                
+        decision_train_save(X_train, X_val, y_train, y_val)        
+        boost_train_save(X_train, X_val, y_train, y_val)
+        deep_train_save(X_train, X_val, y_train, y_val)
         
     elif (args.eval):
-        pass
+        X, y = process_hard_data("test_data.csv", False)
+        print("Decision Regressor:")
+        decision_load_test(X, y)
+        print("")
+        print("XGBoost Classifier:")        
+        boost_load_test(X, y)
+        print("")
+        print("PyTorch Deep Model:")
+        deep_load_test(X, y)
 
 if __name__ == "__main__":
     main()

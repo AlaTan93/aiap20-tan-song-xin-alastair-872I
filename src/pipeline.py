@@ -102,6 +102,59 @@ def process_hard_data(filename="", train=True):
         return X_train, X_val, y_train, y_val
     else:
         # Evaluation mode
-        pass
+        if len(filename) == 0:
+            raise ValueError("Need a filename for the pipeline")
+
+        bank_df = pd.read_csv(filename)
+        
+        bank_df_2 = bank_df.copy()
+
+        bank_df_2["Age"] = bank_df_2["Age"].str.extract(r'(\d+)').astype(int)
+        bank_df_2.loc[bank_df_2["Age"] > 100, 'Age'] = np.nan       
+        bank_df_2.drop('Client ID', axis=1, inplace=True)
+
+        bank_df_2.loc[bank_df_2["Housing Loan"].isna(), "Housing Loan"] = 'unknown'
+        bank_df_2.loc[bank_df_2["Personal Loan"].isna(), "Personal Loan"] = 'unknown'
+        bank_df_2.loc[bank_df_2["Contact Method"] == 'Cell', "Contact Method"] = 'cellular'
+        bank_df_2.loc[bank_df_2["Contact Method"] == 'Telephone', "Contact Method"] = 'telephone'
+        bank_df_2["Campaign Calls"] = bank_df_2["Campaign Calls"].abs()
+
+        bank_df_2.drop("Subscription Status", axis=1, inplace=True)
+        bank_df_2.drop("Credit Default", axis=1, inplace=True)
+        bank_df_2.loc[bank_df_2['Occupation'].isin(['blue-collar', 'housemaid', 'technician']), 'Occupation'] = 'blue-collar' 
+        bank_df_2.loc[bank_df_2['Occupation'].isin(['admin.', 'management', 'services']), 'Occupation'] = 'white-collar'
+        bank_df_2.loc[bank_df_2['Occupation'].isin(['entrepreneur', 'self-employed']), 'Occupation'] = 'self-employed'
+        bank_df_2.loc[bank_df_2['Education Level'].isin(['basic.4y', 'basic.6y', 'basic.9y', 'high.school', 'illiterate']), 'Education Level'] = 'high.school.ab'                
+
+        ct = ColumnTransformer([
+            ('cat', encoder, categorical_cols)
+        ], remainder='passthrough')
+
+        imputed_array = ct.fit_transform(bank_df_2)
+        encoded_feature_names = ct.named_transformers_['cat'].get_feature_names_out(categorical_cols)
+        all_column_names = list(encoded_feature_names) + numeric  # re-add numeric columns
+
+        # Convert back to DataFrame
+        df_encoded = pd.DataFrame(imputed_array, columns=all_column_names, index=bank_df_2.index)        
+
+        # Masking column for Previous contact days
+        df_encoded.loc[df_encoded["Previous Contact Days"] == 999, "Contact Days Mask"] = 1
+        df_encoded.loc[df_encoded["Previous Contact Days"] != 999, "Contact Days Mask"] = 0
+        df_encoded.loc[df_encoded["Previous Contact Days"] == 999, "Previous Contact Days"] = 0
+
+        imputer = KNNImputer(n_neighbors=3)
+        age_imputed_array = imputer.fit_transform(df_encoded)
+        df_encoded = pd.DataFrame(age_imputed_array, columns=df_encoded.columns, index=df_encoded.index)
+
+        df_encoded["Subscription Status"] = bank_df["Subscription Status"]
+        df_encoded.loc[df_encoded["Subscription Status"] == 'yes', 'Subscription Status'] = 1
+        df_encoded.loc[df_encoded["Subscription Status"] == 'no', 'Subscription Status'] = 0
+        df_encoded["Subscription Status"] = df_encoded["Subscription Status"].astype(int)
+                
+        df_encoded = df_encoded.reindex(columns=preferred_column_order)
+        y = df_encoded["Subscription Status"].copy()
+        X = df_encoded.drop(columns="Subscription Status")
+
+        return X, y
 
     

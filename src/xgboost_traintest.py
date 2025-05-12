@@ -4,7 +4,7 @@ import numpy as np, pandas as pd
 from imblearn.pipeline import Pipeline
 from imblearn.over_sampling import SMOTE
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score
 from sklearn.model_selection import cross_validate, StratifiedKFold, GridSearchCV
 from sklearn.preprocessing import StandardScaler
 
@@ -50,17 +50,21 @@ def train_and_save(X_train, X_val, y_train, y_val, location="saved/xgboost.pkl")
     y_pred = search.best_estimator_.predict(X_val)
     print(search.best_params_)
     print("Hold‑out F1:", f1_score(y_val, y_pred))
+    print("Hold‑out Balanced Accuracy:", balanced_accuracy_score((y_val >= 0.5), (y_pred >= 0.5)))
         
     joblib.dump(search.best_estimator_, location)
     print("Saved →", location)
 
     best_pipe = search.best_estimator_
-    
-    # Get the fitted StandardScaler from inside the ColumnTransformer
-    scaler = best_pipe.named_steps["prep"].named_transformers_["num"]
 
-    # Save the scaler
-    joblib.dump(scaler, "saved/xgboost_scaler.pkl")
+def f1_from_soft_labels(y_true, y_pred):
+    y_pred_bin = (y_pred >= 0.5).astype(int)
+    y_true = (np.asarray(y_true) >= 0.5).astype(int)
+    return f1_score(y_true, y_pred_bin)
 
-def test_model():
-    pass
+def load_and_test(X, y, location="saved/xgboost.pkl"):
+    pipe = joblib.load(location)
+
+    y_pred = pipe.predict(X)
+    print("F1:", f1_from_soft_labels(y, y_pred))
+    print("Balanced Accuracy:", balanced_accuracy_score((y >= 0.5), (y_pred >= 0.5)))

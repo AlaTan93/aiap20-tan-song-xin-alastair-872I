@@ -1,98 +1,110 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from sklearn.metrics import roc_auc_score, average_precision_score
-from torch.utils.data import TensorDataset, DataLoader
+from torch_estimator import TorchSoftRegressor
+import torch, joblib
+import numpy as np
+from imblearn import FunctionSampler
+from imblearn.pipeline import Pipeline
+from imblearn.over_sampling import SMOTE
+from sklearn.model_selection import StratifiedKFold
+from sklearn.base import clone
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, FunctionTransformer
+from sklearn.metrics import log_loss, make_scorer, f1_score, balanced_accuracy_score
 
-class TabularNet(nn.Module):
-    """
-    Simple fully‑connected network for 27‑dim tabular data.
-    Last layer returns *one* logit; apply sigmoid only for metrics.
-    """
-    def __init__(self, in_features: int = 27):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_features, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.30),
+def to_soft(X, y):
+    return X, y.astype(np.float32) * 0.85 + 0.05
 
-            nn.Linear(128, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.30),
+def to_float32(X):
+    return X.astype(np.float32)
 
-            nn.Linear(64, 1)      # logits (no activation!)
-        )
+def bce_score(y_true, y_pred):
+    y_pred = np.clip(y_pred, 1e-6, 1 - 1e-6)
+    y_true = (np.asarray(y_true) >= 0.5).astype(int)
+    return log_loss(y_true, y_pred)
 
-    def forward(self, x):
-        return self.net(x).squeeze(1)   # shape (batch,)
+def f1_from_soft_labels(y_true, y_pred):
+    y_pred_bin = (y_pred >= 0.5).astype(int)
+    y_true = (np.asarray(y_true) >= 0.5).astype(int)
+    return f1_score(y_true, y_pred_bin)
 
-def train_epoch(model, loader, optimizer, device="cuda"):
-    model.train()
-    epoch_loss = 0
-    for X, y in loader:                     # y ∈ [0,1] floats
-        X, y = X.to(device), y.to(device).float()
+def cross_val_with_soft_labels(X, y, pipeline, n_splits=5, random_state=42):
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    scores = []
+    best_score = float('inf')
+    best_model = None
 
-        optimizer.zero_grad()
-        logits = model(X)
-        loss = criterion(logits, y)
-        loss.backward()
-        optimizer.step()
-        epoch_loss += loss.item() * X.size(0)
+    for fold, (train_idx, test_idx) in enumerate(skf.split(X, y)):
+        print(f"Fold {fold + 1}")
+        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
-    return epoch_loss / len(loader.dataset)
+        # Clone the pipeline to avoid data leakage between folds
+        pipe = clone(pipeline)
 
-@torch.inference_mode()
-def evaluate(model, loader, device="cuda"):
-    model.eval()
-    all_probs, all_targets = [], []
+        # Fit on train
+        pipe.fit(X_train, y_train)
 
-    for X, y in loader:
-        X = X.to(device)
-        probs = torch.sigmoid(model(X)).cpu().numpy()
-        all_probs.append(probs)
-        all_targets.append(y.numpy())
+        # Predict on test
+        y_pred = torch.sigmoid(torch.tensor(pipe.predict(X_test))).numpy()
 
-    y_true  = np.concatenate(all_targets)
-    y_prob  = np.concatenate(all_probs)
+        # Score with raw labels
+        score = bce_score(y_test, y_pred)
+        f1_score = f1_from_soft_labels(y_test, y_pred)
+        acc = balanced_accuracy_score((y_test >= 0.5), (y_pred >= 0.5))
+        print(f"  Hard BCE: {score:.4f}")
+        print(f"  F1: {f1_score:.4f}")
+        print(f"  Balanced Acc: {acc:.4f}")
+        scores.append(score)
 
-    return {
-        "BCE":  criterion(
-                    torch.from_numpy(
-                        np.log(y_prob / (1 - y_prob + 1e-7) + 1e-7)  # logits again
-                    ), torch.from_numpy(y_true)
-                ).item(),
-        "ROC‑AUC": roc_auc_score(y_true, y_prob),
-        "PR‑AUC":  average_precision_score(y_true, y_prob),
-    }
+        if score < best_score:
+            best_score = score
+            best_model = pipe
 
-def train_and_save(X_train, X_val, y_
+    print(f"\nMean BCE: {np.mean(scores):.4f}")
+    return best_model
 
-X_train_t = torch.tensor(X_train.values, dtype=torch.float32)
-y_train_t = torch.tensor(y_train.values, dtype=torch.float32)
+def load_and_test(X, y, location = "saved/best_deep_pipeline.pkl"):
+    pipe = joblib.load(location)
 
-train_ds  = TensorDataset(X_train_t, y_train_t)
-train_dl  = DataLoader(train_ds, batch_size=256, shuffle=True, drop_last=False)
+    y_pred = pipe.predict(X)
+    print("BCE:", bce_score(y, y_pred))
+    print("F1:", f1_from_soft_labels(y, y_pred))
+    print("Balanced Accuracy:", balanced_accuracy_score((y >= 0.5), (y_pred >= 0.5)))
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model  = TabularNet().to(device)
+def train_and_save(X_train, X_val, y_train, y_val):
+    soft = FunctionSampler(func=to_soft, validate=False)
+    tof32 = FunctionTransformer(func=to_float32, validate=False)    
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=3)
+    num_cols = ["Age", "Campaign Calls", "Previous Contact Days"]
+    prep = ColumnTransformer([("num", StandardScaler(), num_cols)],
+                             remainder="passthrough")
 
-best_auc, best_state = 0.0, None
-for epoch in range(50):
-    train_loss = train_epoch(model, train_dl, optimizer, device)
-    metrics    = evaluate(model, val_dl, device)
-    scheduler.step(metrics["ROC‑AUC"])
+    reg = TorchSoftRegressor(
+        in_features=27,
+        lr=1e-6,
+        max_epochs=100,
+        batch_size=900, # 512 best option
+        device='cuda' if torch.cuda.is_available() else 'cpu',
+        verbose=False
+    )
 
-    if metrics["ROC‑AUC"] > best_auc:
-        best_auc, best_state = metrics["ROC‑AUC"], model.state_dict().copy()
+    pipe = Pipeline([
+        ("prep",  prep),
+        ("cast",  tof32),               # X float32    
+        ("smote", SMOTE(random_state=0)),
+        ("soft",  soft),                
+        ("model", reg)
+    ])
 
-    print(f"Epoch {epoch:02d} │ loss {train_loss:.4f} │ "
-          f"val PR‑AUC {metrics['PR‑AUC']:.4f}")
+    # Get the best model after cross-validation
+    best_pipe = cross_val_with_soft_labels(X_train, y_train, pipe)
 
-model.load_state_dict(best_state)   # restore best epoch
-torch.save(model.state_dict(), "subscription_net.pt")
+    # Evaluate on validation set
+    y_val_pred = torch.sigmoid(torch.tensor(best_pipe.predict(X_val))).numpy()
+    print("Deep Holdout Hard BCE:", bce_score(y_val, y_val_pred))
+    print("Holdout F1:", f1_from_soft_labels(y_val, y_val_pred))
+    print("Holdout Acc:", balanced_accuracy_score((y_val >= 0.5), (y_val_pred >= 0.5)))
+
+    location = "saved/best_deep_pipeline.pkl"
+    joblib.dump(best_pipe, location)
+    print("Saved →", location)
 
