@@ -127,6 +127,8 @@ A 20% validation split is created, then the remaining 80% is used in 5-Fold Cros
 
 ## Reflection
 
+The XGBoostClassifier has the best performance on unseen data, and should be used. However, it is likely better to use an off-the-shelf model, such as from Google Cloud Platforms, rather than making your own model, as the F1 Score of all these models do not hit even 0.5.
+
 The performance of the deep model is disappointing, despite the depth of the model created. It is possible, even likely, that a stringent and heavy search of all possible permutations and parameters will discover a better model than the XGBoost Classifier, which has the highest validation hold-out F1 Score.
 
 The DecisionTreeRegressor has the best performance on the whole dataset, but weaker than XGBoostClassifier on the holdout. The Deep model performed the worst out of all 3 in terms of F1, but had better balanced accuracy than the XGBoostClassifier. A custom loss option to prefer true positives and discourage false positives for the Deep Model should be considered in the future.
