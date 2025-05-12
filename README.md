@@ -87,43 +87,46 @@ A 20% validation split is created, then the remaining 80% is used in 5-Fold Cros
 * Balanced Accuracy penalises being more accurate for 1 label than another, but more tolerant of false positives than F1.
 
 ## Components in Pipeline:
+
 * The pipeline consists of:
     * A StandardScaler, scaling only numerical columns.
     * (For the Deep Model) A layer to convert all input columns not integers into float32s, for better training in torch
     * SMOTE, meant to perform synthetic oversampling.
     * (For the Deep Model and the Decision Tree Regressor) A layer to convert hard labels (0, 1) to soft labels of different values for each training model
-    * The model.
+    * The model
 
 ## Results:
-    * DecisionTreeRegressor:
-        * Best parameters: max_depth: None, min_samples_split: 100
-        * Testing using the fold model with the best results:
-            * Validation Hold‑out BCE: 0.4761
-            * Validation Hold‑out F1: 0.3044
-            * Validation Hold‑out Balanced Accuracy: 0.6200
-        * Complete Dataset Validation:
-            * BCE: 0.4057
-            * F1: 0.3790
-            * Balanced Accuracy: 0.6709
-    * XGBoost Classifier:
-        * Best parameters: colsample_bytree: 0.8, learning_rate: 0.03, max_depth: 4, n_estimators: 600, subsample: 0.8
-        * Testing using the fold model with the best results:
-            * Validation Hold‑out F1: 0.3514
-            * Validation Hold‑out Balanced Accuracy: 0.6321
-        * Complete Dataset Validation:
-            * F1: 0.3652
-            * Balanced Accuracy: 0.6382
-    * Deep Model:
-        * Only 5 Fold-Validation was done.
-            * Validation Hold-out Hard BCE: 0.5728
-            * Validation Hold-out F1: 0.3252
-            * Validation Hold-out Balanced Accuracy: 0.6487
-        * Complete Dataset Validation:
-            * BCE: 1.0325
-            * F1: 0.3335
-            * Balanced Accuracy: 0.6067
+
+* DecisionTreeRegressor:
+    * Best parameters: max_depth: None, min_samples_split: 100
+    * Testing using the fold model with the best results:
+        * Validation Hold‑out BCE: 0.4761
+        * Validation Hold‑out F1: 0.3044
+        * Validation Hold‑out Balanced Accuracy: 0.6200
+    * Complete Dataset Validation:
+        * BCE: 0.4057
+        * F1: 0.3790
+        * Balanced Accuracy: 0.6709
+* XGBoost Classifier:
+    * Best parameters: colsample_bytree: 0.8, learning_rate: 0.03, max_depth: 4, n_estimators: 600, subsample: 0.8
+    * Testing using the fold model with the best results:
+        * Validation Hold‑out F1: 0.3514
+        * Validation Hold‑out Balanced Accuracy: 0.6321
+    * Complete Dataset Validation:
+        * F1: 0.3652
+        * Balanced Accuracy: 0.6382
+* Deep Model:
+    * Only 5 Fold-Validation was done.
+        * Validation Hold-out Hard BCE: 0.5728
+        * Validation Hold-out F1: 0.3252
+        * Validation Hold-out Balanced Accuracy: 0.6487
+    * Complete Dataset Validation:
+        * BCE: 1.0325
+        * F1: 0.3335
+        * Balanced Accuracy: 0.6067
 
 ## Reflection
+
 The performance of the deep model is disappointing, despite the depth of the model created. It is possible, even likely, that a stringent and heavy search of all possible permutations and parameters will discover a better model than the XGBoost Classifier, which has the highest validation hold-out F1 Score.
 
 The DecisionTreeRegressor has the best performance on the whole dataset, but weaker than XGBoostClassifier on the holdout. The Deep model performed the worst out of all 3 in terms of F1, but had better balanced accuracy than the XGBoostClassifier. A custom loss option to prefer true positives and discourage false positives for the Deep Model should be considered in the future.
