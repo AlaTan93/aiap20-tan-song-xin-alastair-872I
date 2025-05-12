@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #Argument options:
-# Only 1 argument is accepted. No arguments runs nothing
+# Only 1 argument is accepted. No arguments runs training
 # train: Trains all 3 models
 # eval: Evaluates all saved models
 
@@ -13,5 +13,6 @@ elif [ "$1" == "eval" ]; then
     echo "Running in evaluation mode..."
     python src/main.py --eval
 else
-    echo "No arguments, doing nothing. Add one of 'train' or 'eval'."
+    echo "Running in training mode, since no arguments created..."
+    python src/main.py --train
 fi

@@ -24,7 +24,7 @@ class TorchSoftRegressor(BaseEstimator, RegressorMixin):
         batch_size=32,
         verbose=0,
         random_state=42,
-        patience=10
+        patience=5
     ):
         self.in_features = in_features
         self.lr = lr
@@ -120,7 +120,7 @@ class TorchSoftRegressor(BaseEstimator, RegressorMixin):
         # 1) initialise bookkeeping -------------------------------------
         best_bce   = float('inf')
         best_state = None
-        patience   = 5
+        patience   = self.patience
         since_improve = 0
 
         # 2) training epochs --------------------------------------------
@@ -147,10 +147,10 @@ class TorchSoftRegressor(BaseEstimator, RegressorMixin):
                       f"val_BCE {val_loss:.4f}  F1 {val_f1:.4f}  Balanced Acc {acc:.4f}")
 
             # ---- early‑stopping logic ----------------------------------
-            if val_loss < best_bce - 1e-4:      # significant improvement
+            if val_loss < best_bce - 1e-4:
                 best_bce = val_loss
                 since_improve = 0
-                # clone the entire state dict (tensor.clone ensures no gradual overwrite)
+                # clone the entire state dict
                 best_state = {k: v.clone() for k, v in self.net_.state_dict().items()}
             else:
                 since_improve += 1
